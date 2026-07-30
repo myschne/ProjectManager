@@ -721,6 +721,45 @@ def style_app() -> None:
             font-weight: 700;
             margin-top: 0.2rem;
         }
+        .weather-card {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 0.75rem;
+            align-items: center;
+            border: 1px solid rgba(78, 205, 196, 0.42);
+            border-radius: 8px;
+            padding: 0.9rem 1rem;
+            background:
+                linear-gradient(135deg, rgba(27, 214, 180, 0.18), rgba(69, 170, 242, 0.16)),
+                rgba(255, 255, 255, 0.05);
+        }
+        .weather-location {
+            color: rgba(255, 255, 255, 0.78);
+            font-size: 0.85rem;
+            font-weight: 800;
+            margin-bottom: 0.25rem;
+        }
+        .weather-temp {
+            color: #ffffff;
+            font-size: 2.1rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+        .weather-feels {
+            display: inline-block;
+            color: #7ff0a3;
+            font-size: 0.8rem;
+            font-weight: 800;
+            margin-top: 0.45rem;
+            padding: 0.18rem 0.45rem;
+            border-radius: 999px;
+            background: rgba(34, 197, 94, 0.18);
+        }
+        .weather-icon {
+            font-size: 3.4rem;
+            line-height: 1;
+            filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.20));
+        }
         @media (max-width: 760px) {
             .stApp::before,
             .stApp::after {
@@ -840,6 +879,23 @@ def daily_quote() -> str:
     return DAILY_QUOTES[index]
 
 
+def weather_icon(condition: str) -> str:
+    normalized = condition.lower()
+    if any(term in normalized for term in ["thunder", "storm"]):
+        return "⛈️"
+    if any(term in normalized for term in ["snow", "sleet", "blizzard"]):
+        return "❄️"
+    if any(term in normalized for term in ["rain", "drizzle", "shower"]):
+        return "🌧️"
+    if any(term in normalized for term in ["fog", "mist", "haze"]):
+        return "🌫️"
+    if "cloud" in normalized or "overcast" in normalized:
+        return "☁️"
+    if "sun" in normalized or "clear" in normalized:
+        return "☀️"
+    return "🌤️"
+
+
 def render_mini_calendar() -> None:
     today = date.today()
     weeks = calendar.Calendar(firstweekday=6).monthdayscalendar(today.year, today.month)
@@ -914,7 +970,19 @@ def render_sidebar_widgets(bookmarks: pd.DataFrame) -> None:
         if weather is None:
             st.caption("Weather is unavailable right now.")
         else:
-            st.metric(weather["location"], weather["temp"], f"Feels like {weather['feels_like']}")
+            st.markdown(
+                f"""
+                <div class="weather-card">
+                    <div>
+                        <div class="weather-location">{escape_text(weather["location"])}</div>
+                        <div class="weather-temp">{escape_text(weather["temp"])}</div>
+                        <div class="weather-feels">Feels like {escape_text(weather["feels_like"])}</div>
+                    </div>
+                    <div class="weather-icon">{weather_icon(weather["condition"])}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
             st.caption(f"{weather['condition']} - humidity {weather['humidity']}")
 
     with st.sidebar.expander("Daily Quote", expanded=True):
