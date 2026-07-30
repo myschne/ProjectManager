@@ -9,6 +9,7 @@ from contextlib import closing
 from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import quote
+from urllib.parse import urlparse
 from urllib.request import urlopen
 from zoneinfo import ZoneInfo
 
@@ -19,6 +20,7 @@ import streamlit as st
 APP_DIR = Path(__file__).parent
 DB_PATH = APP_DIR / "project_manager.db"
 HERO_IMAGE_PATH = APP_DIR / "assets" / "project-hero.png"
+FAVICON_PATH = APP_DIR / "assets" / "favicon.svg"
 
 STATUS_OPTIONS = ["Not started", "In progress", "Blocked", "Done"]
 PRIORITY_OPTIONS = ["Low", "Medium", "High", "Critical"]
@@ -313,7 +315,8 @@ def image_data_url(path: str) -> str:
 
 
 def style_app() -> None:
-    st.set_page_config(page_title="Project Manager", page_icon="🌈", layout="wide")
+    page_icon = FAVICON_PATH if FAVICON_PATH.exists() else "PM"
+    st.set_page_config(page_title="Project Manager", page_icon=page_icon, layout="wide")
     st.markdown(
         """
         <style>
@@ -685,6 +688,39 @@ def style_app() -> None:
             font-weight: 800;
             margin-top: -0.25rem;
         }
+        .bookmark-card {
+            display: block;
+            border: 1px solid rgba(78, 205, 196, 0.26);
+            border-radius: 8px;
+            padding: 0.65rem 0.72rem;
+            margin: 0.15rem 0 0.45rem;
+            color: #ffffff;
+            text-decoration: none;
+            background:
+                linear-gradient(135deg, rgba(27, 214, 180, 0.15), rgba(69, 170, 242, 0.11)),
+                rgba(255, 255, 255, 0.045);
+        }
+        .bookmark-card:hover {
+            border-color: rgba(78, 205, 196, 0.58);
+            background:
+                linear-gradient(135deg, rgba(27, 214, 180, 0.24), rgba(69, 170, 242, 0.18)),
+                rgba(255, 255, 255, 0.07);
+            text-decoration: none;
+        }
+        .bookmark-label {
+            display: block;
+            color: #ffffff;
+            font-size: 0.92rem;
+            font-weight: 800;
+            line-height: 1.15;
+        }
+        .bookmark-host {
+            display: block;
+            color: rgba(255, 255, 255, 0.64);
+            font-size: 0.74rem;
+            font-weight: 700;
+            margin-top: 0.2rem;
+        }
         @media (max-width: 760px) {
             .stApp::before,
             .stApp::after {
@@ -830,9 +866,19 @@ def render_bookmarks(bookmarks: pd.DataFrame) -> None:
         st.caption("No bookmarks yet.")
     else:
         for _, bookmark in bookmarks.iterrows():
-            cols = st.columns([5, 1])
-            cols[0].markdown(f"[{bookmark['label']}]({bookmark['url']})")
-            if cols[1].button("x", key=f"delete_bookmark_{bookmark['id']}"):
+            url = str(bookmark["url"])
+            host = urlparse(url).netloc.replace("www.", "") or url
+            cols = st.columns([5, 1.15])
+            cols[0].markdown(
+                (
+                    f'<a class="bookmark-card" href="{escape_text(url)}" target="_blank" rel="noopener noreferrer">'
+                    f'<span class="bookmark-label">{escape_text(bookmark["label"])}</span>'
+                    f'<span class="bookmark-host">{escape_text(host)}</span>'
+                    "</a>"
+                ),
+                unsafe_allow_html=True,
+            )
+            if cols[1].button("Delete", key=f"delete_bookmark_{bookmark['id']}"):
                 delete_bookmark(int(bookmark["id"]))
                 st.rerun()
 
