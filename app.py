@@ -290,9 +290,11 @@ def style_app() -> None:
         }
         .stApp {
             background:
-                radial-gradient(circle at 8% 14%, rgba(255, 107, 107, 0.20), transparent 18rem),
-                radial-gradient(circle at 92% 12%, rgba(78, 205, 196, 0.22), transparent 20rem),
-                radial-gradient(circle at 88% 78%, rgba(246, 200, 95, 0.13), transparent 18rem);
+                radial-gradient(circle at 10% 78%, rgba(27, 214, 180, 0.86), transparent 28rem),
+                radial-gradient(circle at 38% 62%, rgba(36, 167, 174, 0.52), transparent 29rem),
+                radial-gradient(circle at 80% 18%, rgba(33, 96, 174, 0.58), transparent 24rem),
+                linear-gradient(135deg, #08131f 0%, #0b3140 45%, #0f3b72 100%);
+            background-attachment: fixed;
         }
         .stApp::before,
         .stApp::after {
@@ -302,21 +304,21 @@ def style_app() -> None:
             bottom: 2rem;
             width: 9rem;
             pointer-events: none;
-            opacity: 0.55;
+            opacity: 0.24;
             z-index: 0;
         }
         .stApp::before {
             left: 0;
             background:
-                linear-gradient(135deg, rgba(255, 107, 107, 0.34), transparent 55%),
-                repeating-linear-gradient(160deg, transparent 0 18px, rgba(69, 170, 242, 0.20) 18px 21px);
+                linear-gradient(135deg, rgba(78, 205, 196, 0.32), transparent 55%),
+                repeating-linear-gradient(160deg, transparent 0 18px, rgba(255, 255, 255, 0.12) 18px 21px);
             clip-path: polygon(0 0, 72% 10%, 38% 52%, 92% 100%, 0 100%);
         }
         .stApp::after {
             right: 0;
             background:
-                linear-gradient(225deg, rgba(78, 205, 196, 0.32), transparent 55%),
-                repeating-linear-gradient(25deg, transparent 0 20px, rgba(246, 200, 95, 0.22) 20px 23px);
+                linear-gradient(225deg, rgba(69, 170, 242, 0.26), transparent 55%),
+                repeating-linear-gradient(25deg, transparent 0 20px, rgba(255, 255, 255, 0.10) 20px 23px);
             clip-path: polygon(100% 0, 28% 8%, 62% 48%, 12% 100%, 100% 100%);
         }
         .block-container {
@@ -333,11 +335,11 @@ def style_app() -> None:
             overflow: hidden;
             margin: 0 0 1rem;
             background:
-                linear-gradient(90deg, rgba(8, 12, 22, 0.94), rgba(8, 12, 22, 0.76) 44%, rgba(8, 12, 22, 0.22)),
+                linear-gradient(90deg, rgba(4, 17, 28, 0.93), rgba(5, 34, 49, 0.72) 44%, rgba(7, 54, 78, 0.24)),
                 var(--pm-hero-image);
             background-size: cover;
             background-position: center right;
-            box-shadow: 0 18px 50px rgba(0, 0, 0, 0.24);
+            box-shadow: 0 18px 50px rgba(0, 0, 0, 0.30);
         }
         .pm-hero-inner {
             width: min(62%, 650px);
@@ -390,8 +392,9 @@ def style_app() -> None:
             border-radius: 8px;
             padding: 14px 16px;
             background:
-                linear-gradient(135deg, rgba(255, 107, 107, 0.16), rgba(78, 205, 196, 0.10)),
-                rgba(128, 132, 149, 0.08);
+                linear-gradient(135deg, rgba(27, 214, 180, 0.18), rgba(33, 96, 174, 0.16)),
+                rgba(4, 17, 28, 0.42);
+            backdrop-filter: blur(8px);
         }
         .section-title {
             color: var(--pm-mint);
