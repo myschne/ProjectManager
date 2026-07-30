@@ -31,6 +31,7 @@ def init_db() -> None:
                 name TEXT NOT NULL,
                 owner TEXT DEFAULT '',
                 status TEXT NOT NULL DEFAULT 'Not started',
+                progress INTEGER NOT NULL DEFAULT 0,
                 priority TEXT NOT NULL DEFAULT 'Medium',
                 due_date TEXT,
                 notes TEXT DEFAULT '',
@@ -51,6 +52,19 @@ def init_db() -> None:
             );
             """
         )
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(projects)")}
+        if "progress" not in columns:
+            conn.execute("ALTER TABLE projects ADD COLUMN progress INTEGER NOT NULL DEFAULT 0")
+            conn.execute(
+                """
+                UPDATE projects
+                SET progress = CASE
+                    WHEN status = 'Done' THEN 100
+                    WHEN status = 'In progress' THEN 50
+                    ELSE 0
+                END
+                """
+            )
         conn.commit()
 
 
@@ -65,16 +79,26 @@ def execute(query: str, params: tuple = ()) -> None:
         conn.commit()
 
 
-def add_project(name: str, owner: str, status: str, priority: str, due_date: date | None, notes: str) -> None:
+def project_status_from_progress(progress: int) -> str:
+    if progress >= 100:
+        return "Done"
+    if progress <= 0:
+        return "Not started"
+    return "In progress"
+
+
+def add_project(name: str, owner: str, progress: int, priority: str, due_date: date | None, notes: str) -> None:
+    status = project_status_from_progress(progress)
     execute(
         """
-        INSERT INTO projects (name, owner, status, priority, due_date, notes, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO projects (name, owner, status, progress, priority, due_date, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             name.strip(),
             owner.strip(),
             status,
+            progress,
             priority,
             due_date.isoformat() if due_date else None,
             notes.strip(),
@@ -110,14 +134,15 @@ def add_task(
     )
 
 
-def update_project(project_id: int, status: str, priority: str, due_date: date | None, notes: str) -> None:
+def update_project(project_id: int, progress: int, priority: str, due_date: date | None, notes: str) -> None:
+    status = project_status_from_progress(progress)
     execute(
         """
         UPDATE projects
-        SET status = ?, priority = ?, due_date = ?, notes = ?
+        SET status = ?, progress = ?, priority = ?, due_date = ?, notes = ?
         WHERE id = ?
         """,
-        (status, priority, due_date.isoformat() if due_date else None, notes.strip(), project_id),
+        (status, progress, priority, due_date.isoformat() if due_date else None, notes.strip(), project_id),
     )
 
 
@@ -159,21 +184,54 @@ def style_app() -> None:
     st.markdown(
         """
         <style>
+        :root {
+            --pm-coral: #ff6b6b;
+            --pm-gold: #f6c85f;
+            --pm-mint: #4ecdc4;
+            --pm-blue: #45aaf2;
+            --pm-ink: #243042;
+        }
         .block-container {
             padding-top: 1.4rem;
             padding-bottom: 2rem;
             max-width: 1180px;
         }
+        h1 {
+            background: linear-gradient(90deg, var(--pm-coral), var(--pm-gold), var(--pm-mint), var(--pm-blue));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        div[data-testid="stTabs"] button[aria-selected="true"] {
+            color: var(--pm-coral);
+        }
+        div[data-testid="stForm"],
+        div[data-testid="stExpander"] {
+            border-color: rgba(78, 205, 196, 0.28);
+        }
         div[data-testid="stMetric"] {
-            border: 1px solid rgba(128, 132, 149, 0.35);
+            border: 1px solid rgba(78, 205, 196, 0.34);
             border-radius: 8px;
             padding: 14px 16px;
-            background: rgba(128, 132, 149, 0.08);
+            background:
+                linear-gradient(135deg, rgba(255, 107, 107, 0.16), rgba(78, 205, 196, 0.10)),
+                rgba(128, 132, 149, 0.08);
         }
         .section-title {
+            color: var(--pm-mint);
             font-size: 1.02rem;
             font-weight: 700;
             margin: 0.5rem 0 0.4rem;
+        }
+        .project-strip {
+            border-left: 5px solid var(--pm-coral);
+            padding: 0.65rem 0.8rem;
+            margin: 0.45rem 0 0.75rem;
+            border-radius: 8px;
+            background: linear-gradient(90deg, rgba(69, 170, 242, 0.14), rgba(246, 200, 95, 0.08));
+        }
+        .project-strip strong {
+            color: inherit;
         }
         .muted {
             color: #677083;
@@ -188,6 +246,12 @@ def style_app() -> None:
 def status_counts(tasks: pd.DataFrame) -> dict[str, int]:
     counts = tasks["status"].value_counts().to_dict() if not tasks.empty else {}
     return {status: int(counts.get(status, 0)) for status in STATUS_OPTIONS}
+
+
+def project_progress_summary(projects: pd.DataFrame) -> int:
+    if projects.empty:
+        return 0
+    return int(round(projects["progress"].fillna(0).mean()))
 
 
 def upcoming_items(projects: pd.DataFrame, tasks: pd.DataFrame) -> pd.DataFrame:
@@ -208,7 +272,7 @@ def upcoming_items(projects: pd.DataFrame, tasks: pd.DataFrame) -> pd.DataFrame:
 
 
 def render_dashboard(projects: pd.DataFrame, tasks: pd.DataFrame) -> None:
-    active_projects = projects[projects["status"] != "Done"] if not projects.empty else projects
+    active_projects = projects[projects["progress"] < 100] if not projects.empty else projects
     overdue_tasks = tasks[
         (tasks["status"] != "Done") & tasks["due_date"].notna() & (tasks["due_date"].apply(days_until) < 0)
     ] if not tasks.empty else tasks
@@ -217,8 +281,22 @@ def render_dashboard(projects: pd.DataFrame, tasks: pd.DataFrame) -> None:
     metric_cols = st.columns(4)
     metric_cols[0].metric("Active projects", len(active_projects))
     metric_cols[1].metric("Open tasks", len(tasks[tasks["status"] != "Done"]) if not tasks.empty else 0)
-    metric_cols[2].metric("Blocked tasks", len(blocked_tasks))
+    metric_cols[2].metric("Avg project progress", f"{project_progress_summary(projects)}%")
     metric_cols[3].metric("Overdue tasks", len(overdue_tasks))
+
+    if not projects.empty:
+        st.markdown('<div class="section-title">Project Progress</div>', unsafe_allow_html=True)
+        for _, project in projects.sort_values(["progress", "due_date"], ascending=[True, True], na_position="last").head(6).iterrows():
+            st.markdown(
+                f"""
+                <div class="project-strip">
+                    <strong>{project['name']}</strong>
+                    <span class="muted"> - {project['owner'] or "Unassigned"} - {project['priority']}</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.progress(int(project["progress"]), text=f'{int(project["progress"])}% complete')
 
     left, right = st.columns([1.2, 1])
     with left:
@@ -243,16 +321,16 @@ def render_project_form() -> None:
     with st.form("add_project", clear_on_submit=True):
         st.markdown('<div class="section-title">Add Project</div>', unsafe_allow_html=True)
         name = st.text_input("Project name")
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
         owner = col1.text_input("Owner")
-        status = col2.selectbox("Status", STATUS_OPTIONS, index=1)
-        priority = col3.selectbox("Priority", PRIORITY_OPTIONS, index=1)
+        priority = col2.selectbox("Priority", PRIORITY_OPTIONS, index=1)
+        progress = st.slider("Percent complete", min_value=0, max_value=100, value=0, step=5)
         due = st.date_input("Due date", value=None)
         notes = st.text_area("Notes", height=90)
         submitted = st.form_submit_button("Add project", type="primary")
         if submitted:
             if name.strip():
-                add_project(name, owner, status, priority, due, notes)
+                add_project(name, owner, progress, priority, due, notes)
                 st.success("Project added.")
                 st.rerun()
             else:
@@ -297,14 +375,21 @@ def render_project_detail(projects: pd.DataFrame, tasks: pd.DataFrame) -> None:
     project_tasks = tasks[tasks["project_id"] == project_id] if not tasks.empty else tasks
 
     with st.expander("Project details", expanded=True):
-        col1, col2, col3 = st.columns(3)
-        status = col1.selectbox("Project status", STATUS_OPTIONS, index=STATUS_OPTIONS.index(project["status"]))
-        priority = col2.selectbox("Project priority", PRIORITY_OPTIONS, index=PRIORITY_OPTIONS.index(project["priority"]))
-        due = col3.date_input("Project due date", value=parse_date(project["due_date"]))
+        st.progress(int(project["progress"]), text=f'{int(project["progress"])}% complete')
+        progress = st.slider(
+            "Project percent complete",
+            min_value=0,
+            max_value=100,
+            value=int(project["progress"]),
+            step=5,
+        )
+        col1, col2 = st.columns(2)
+        priority = col1.selectbox("Project priority", PRIORITY_OPTIONS, index=PRIORITY_OPTIONS.index(project["priority"]))
+        due = col2.date_input("Project due date", value=parse_date(project["due_date"]))
         notes = st.text_area("Project notes", value=project["notes"] or "", height=100)
         save_col, delete_col = st.columns([1, 5])
         if save_col.button("Save project", type="primary"):
-            update_project(project_id, status, priority, due, notes)
+            update_project(project_id, progress, priority, due, notes)
             st.success("Project updated.")
             st.rerun()
         if delete_col.button("Delete project"):
@@ -351,7 +436,19 @@ def render_project_detail(projects: pd.DataFrame, tasks: pd.DataFrame) -> None:
 
 def render_tables(projects: pd.DataFrame, tasks: pd.DataFrame) -> None:
     st.markdown('<div class="section-title">All Projects</div>', unsafe_allow_html=True)
-    st.dataframe(projects.drop(columns=["created_at"], errors="ignore"), hide_index=True, width="stretch")
+    st.dataframe(
+        projects.drop(columns=["created_at"], errors="ignore"),
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "progress": st.column_config.ProgressColumn(
+                "progress",
+                format="%d%%",
+                min_value=0,
+                max_value=100,
+            )
+        },
+    )
 
     st.markdown('<div class="section-title">All Tasks</div>', unsafe_allow_html=True)
     if tasks.empty:
