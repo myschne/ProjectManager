@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import html
 import sqlite3
 from contextlib import closing
 from datetime import date, datetime
@@ -16,6 +17,13 @@ HERO_IMAGE_PATH = APP_DIR / "assets" / "project-hero.png"
 
 STATUS_OPTIONS = ["Not started", "In progress", "Blocked", "Done"]
 PRIORITY_OPTIONS = ["Low", "Medium", "High", "Critical"]
+
+PRIORITY_CLASSES = {
+    "Low": "note-low",
+    "Medium": "note-medium",
+    "High": "note-high",
+    "Critical": "note-critical",
+}
 
 
 def get_connection() -> sqlite3.Connection:
@@ -322,6 +330,161 @@ def style_app() -> None:
         .project-strip strong {
             color: inherit;
         }
+        .sticky-board {
+            min-height: 560px;
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background:
+                linear-gradient(115deg, rgba(255, 255, 255, 0.96), rgba(244, 249, 246, 0.94)),
+                repeating-linear-gradient(0deg, transparent 0 35px, rgba(69, 170, 242, 0.06) 35px 36px);
+            box-shadow: inset 0 0 38px rgba(16, 24, 40, 0.10), 0 20px 50px rgba(0, 0, 0, 0.20);
+            color: #1f2937;
+            overflow-x: auto;
+        }
+        .sticky-board-title {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            color: #0f172a;
+            margin-bottom: 1.2rem;
+        }
+        .sticky-board-title h2 {
+            font-size: 1.4rem;
+            margin: 0;
+        }
+        .sticky-board-title span {
+            color: #475569;
+            font-size: 0.92rem;
+            font-weight: 700;
+        }
+        .sticky-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 1.35rem;
+            align-items: start;
+        }
+        .sticky-column {
+            min-width: 0;
+        }
+        .sticky-note {
+            position: relative;
+            color: #1f2937;
+            border-radius: 2px;
+            padding: 0.9rem 0.9rem 0.85rem;
+            box-shadow: 0 12px 18px rgba(15, 23, 42, 0.22);
+            transform: rotate(var(--tilt, -1deg));
+            background-image:
+                repeating-linear-gradient(0deg, transparent 0 22px, rgba(31, 41, 55, 0.13) 22px 23px),
+                linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0));
+            margin-bottom: 0.9rem;
+        }
+        .sticky-note::after {
+            content: "";
+            position: absolute;
+            left: 18%;
+            right: 18%;
+            bottom: -10px;
+            height: 12px;
+            border-radius: 50%;
+            background: rgba(15, 23, 42, 0.20);
+            filter: blur(7px);
+            z-index: -1;
+        }
+        .project-note {
+            min-height: 116px;
+            background-color: #ff7f50;
+        }
+        .project-note.done {
+            background-color: #8fd694;
+        }
+        .project-note.blocked {
+            background-color: #ff6b6b;
+        }
+        .task-note {
+            min-height: 112px;
+            font-size: 0.92rem;
+        }
+        .note-low {
+            background-color: #b9fbc0;
+        }
+        .note-medium {
+            background-color: #73e0c3;
+        }
+        .note-high {
+            background-color: #ffd166;
+        }
+        .note-critical {
+            background-color: #ff6b9a;
+        }
+        .note-blocked {
+            outline: 3px solid rgba(239, 68, 68, 0.72);
+        }
+        .note-done {
+            opacity: 0.66;
+        }
+        .sticky-note h3,
+        .sticky-note h4 {
+            color: #111827;
+            font-family: "Comic Sans MS", "Segoe Print", cursive;
+            line-height: 1.05;
+            margin: 0;
+        }
+        .sticky-note h3 {
+            font-size: 1.75rem;
+        }
+        .sticky-note h4 {
+            font-size: 1.2rem;
+            text-decoration: underline;
+            text-decoration-thickness: 3px;
+            text-underline-offset: 0.18rem;
+        }
+        .sticky-meta {
+            color: #334155;
+            font-size: 0.82rem;
+            font-weight: 700;
+            margin-top: 0.45rem;
+        }
+        .sticky-body {
+            color: #243042;
+            font-family: "Comic Sans MS", "Segoe Print", cursive;
+            font-size: 1rem;
+            font-weight: 700;
+            line-height: 1.2;
+            margin-top: 0.55rem;
+            white-space: pre-wrap;
+        }
+        .sticky-progress {
+            height: 10px;
+            border-radius: 999px;
+            background: rgba(15, 23, 42, 0.18);
+            margin-top: 0.75rem;
+            overflow: hidden;
+        }
+        .sticky-progress span {
+            display: block;
+            height: 100%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, #0ea5e9, #22c55e);
+        }
+        .due-note {
+            width: fit-content;
+            min-width: 86px;
+            min-height: 64px;
+            padding: 0.55rem 0.65rem;
+            margin-left: auto;
+            background-color: #ff3fb4;
+            transform: rotate(3deg);
+        }
+        .due-note h4 {
+            font-size: 0.96rem;
+        }
+        .empty-board-note {
+            max-width: 340px;
+            margin: 3rem auto;
+            text-align: center;
+        }
         .muted {
             color: #677083;
             font-size: 0.92rem;
@@ -344,6 +507,12 @@ def style_app() -> None:
             }
             .pm-hero h1 {
                 font-size: 2.15rem;
+            }
+            .sticky-board {
+                padding: 1rem;
+            }
+            .sticky-grid {
+                grid-template-columns: 1fr;
             }
         }
         </style>
@@ -384,6 +553,28 @@ def project_progress_summary(projects: pd.DataFrame) -> int:
     if projects.empty:
         return 0
     return int(round(projects["progress"].fillna(0).mean()))
+
+
+def escape_text(value: object) -> str:
+    if value is None or pd.isna(value):
+        return ""
+    return html.escape(str(value), quote=True)
+
+
+def format_short_date(value: object) -> str:
+    parsed = parse_date(value)
+    if parsed is None:
+        return ""
+    return f"{parsed.month}/{parsed.day}"
+
+
+def note_tilt(seed: int) -> str:
+    tilts = ["-1.5deg", "1deg", "-0.7deg", "1.4deg", "-1deg", "0.6deg"]
+    return tilts[seed % len(tilts)]
+
+
+def priority_class(priority: object) -> str:
+    return PRIORITY_CLASSES.get(str(priority), "note-medium")
 
 
 def upcoming_items(projects: pd.DataFrame, tasks: pd.DataFrame) -> pd.DataFrame:
@@ -447,6 +638,101 @@ def render_dashboard(projects: pd.DataFrame, tasks: pd.DataFrame) -> None:
         st.markdown('<div class="section-title">Task Mix</div>', unsafe_allow_html=True)
         counts = status_counts(tasks)
         st.bar_chart(pd.DataFrame({"status": counts.keys(), "tasks": counts.values()}).set_index("status"))
+
+
+def render_board(projects: pd.DataFrame, tasks: pd.DataFrame) -> None:
+    project_count = len(projects)
+    task_count = len(tasks[tasks["status"] != "Done"]) if not tasks.empty else 0
+    board_html = [
+        """
+        <div class="sticky-board">
+            <div class="sticky-board-title">
+                <h2>Desk Board</h2>
+                <span>Color coded by priority</span>
+            </div>
+        """
+    ]
+
+    if projects.empty:
+        board_html.append(
+            """
+            <div class="sticky-note note-high empty-board-note" style="--tilt: -1deg;">
+                <h3>Add a project</h3>
+                <div class="sticky-body">Your post-it board will appear here once projects and tasks exist.</div>
+            </div>
+            """
+        )
+    else:
+        board_html.append('<div class="sticky-grid">')
+        for index, (_, project) in enumerate(projects.sort_values(["progress", "created_at"]).iterrows()):
+            project_id = int(project["id"])
+            project_tasks = tasks[tasks["project_id"] == project_id] if not tasks.empty else tasks
+            open_tasks = project_tasks[project_tasks["status"] != "Done"] if not project_tasks.empty else project_tasks
+            project_classes = ["sticky-note", "project-note"]
+            if int(project["progress"]) >= 100:
+                project_classes.append("done")
+            if not open_tasks.empty and (open_tasks["status"] == "Blocked").any():
+                project_classes.append("blocked")
+
+            due = format_short_date(project["due_date"])
+            due_html = ""
+            if due:
+                due_html = f"""
+                <div class="sticky-note due-note" style="--tilt: 3deg;">
+                    <h4>Due</h4>
+                    <div class="sticky-body">{escape_text(due)}</div>
+                </div>
+                """
+
+            board_html.append(
+                f"""
+                <div class="sticky-column">
+                    <div class="{' '.join(project_classes)}" style="--tilt: {note_tilt(index)};">
+                        <h3>{escape_text(project['name'])}</h3>
+                        <div class="sticky-meta">{escape_text(project['owner'] or 'Unassigned')} - {escape_text(project['priority'])}</div>
+                        <div class="sticky-progress"><span style="width: {int(project['progress'])}%;"></span></div>
+                        <div class="sticky-meta">{int(project['progress'])}% complete</div>
+                    </div>
+                    {due_html}
+                """
+            )
+
+            if open_tasks.empty:
+                board_html.append(
+                    """
+                    <div class="sticky-note note-low task-note" style="--tilt: 1deg;">
+                        <h4>Clear</h4>
+                        <div class="sticky-body">No open tasks</div>
+                    </div>
+                    """
+                )
+            else:
+                for task_index, (_, task) in enumerate(open_tasks.sort_values(["status", "priority", "due_date"], na_position="last").iterrows()):
+                    classes = ["sticky-note", "task-note", priority_class(task["priority"])]
+                    if task["status"] == "Blocked":
+                        classes.append("note-blocked")
+                    if task["status"] == "Done":
+                        classes.append("note-done")
+                    task_due = format_short_date(task["due_date"])
+                    task_meta = f"{task['status']} - {task['priority']}"
+                    if task_due:
+                        task_meta = f"{task_meta} - due {task_due}"
+                    note_text = task["notes"] or task["title"]
+                    board_html.append(
+                        f"""
+                        <div class="{' '.join(classes)}" style="--tilt: {note_tilt(project_id + task_index)};">
+                            <h4>{escape_text(task['title'])}</h4>
+                            <div class="sticky-meta">{escape_text(task_meta)}</div>
+                            <div class="sticky-body">{escape_text(note_text)}</div>
+                        </div>
+                        """
+                    )
+            board_html.append("</div>")
+        board_html.append("</div>")
+
+    board_html.append("</div>")
+    st.markdown("".join(board_html), unsafe_allow_html=True)
+    st.caption(f"Showing {project_count} projects and {task_count} open tasks. Edit projects and tasks from the Add or Projects tabs.")
 
 
 def render_project_form() -> None:
@@ -604,18 +890,20 @@ def main() -> None:
     projects = query_df("SELECT * FROM projects ORDER BY created_at DESC")
     tasks = query_df("SELECT * FROM tasks ORDER BY created_at DESC")
 
-    tabs = st.tabs(["Dashboard", "Add", "Projects", "Tables"])
+    tabs = st.tabs(["Dashboard", "Board", "Add", "Projects", "Tables"])
     with tabs[0]:
         render_dashboard(projects, tasks)
     with tabs[1]:
+        render_board(projects, tasks)
+    with tabs[2]:
         left, right = st.columns(2)
         with left:
             render_project_form()
         with right:
             render_task_form(projects)
-    with tabs[2]:
-        render_project_detail(projects, tasks)
     with tabs[3]:
+        render_project_detail(projects, tasks)
+    with tabs[4]:
         render_tables(projects, tasks)
 
 
