@@ -10,6 +10,7 @@ from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import quote
 from urllib.request import urlopen
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
@@ -312,7 +313,7 @@ def image_data_url(path: str) -> str:
 
 
 def style_app() -> None:
-    st.set_page_config(page_title="Project Manager", page_icon="PM", layout="wide")
+    st.set_page_config(page_title="Project Manager", page_icon="🌈", layout="wide")
     st.markdown(
         """
         <style>
@@ -450,19 +451,22 @@ def style_app() -> None:
             width: 100%;
             border-collapse: collapse;
             table-layout: fixed;
-            font-size: 0.78rem;
+            font-size: 0.74rem;
         }
         .mini-calendar th {
             color: var(--pm-mint);
             font-weight: 800;
             padding: 0.25rem 0;
             text-align: center;
+            white-space: nowrap;
         }
         .mini-calendar td {
             color: rgba(255, 255, 255, 0.82);
-            height: 1.65rem;
+            height: 1.45rem;
+            line-height: 1.45rem;
             text-align: center;
             border-radius: 6px;
+            white-space: nowrap;
         }
         .mini-calendar td.today {
             background: linear-gradient(135deg, var(--pm-mint), var(--pm-blue));
@@ -626,7 +630,7 @@ def style_app() -> None:
             text-underline-offset: 0.18rem;
         }
         .sticky-meta {
-            color: #334155;
+            color: #1f2937;
             font-size: 0.82rem;
             font-weight: 700;
             margin-top: 0.45rem;
@@ -671,8 +675,15 @@ def style_app() -> None:
             text-align: center;
         }
         .muted {
-            color: #677083;
+            color: rgba(255, 255, 255, 0.78);
             font-size: 0.92rem;
+            font-weight: 700;
+        }
+        .sidebar-date {
+            color: rgba(255, 255, 255, 0.90);
+            font-size: 0.95rem;
+            font-weight: 800;
+            margin-top: -0.25rem;
         }
         @media (max-width: 760px) {
             .stApp::before,
@@ -841,13 +852,13 @@ def render_bookmarks(bookmarks: pd.DataFrame) -> None:
 
 
 def render_sidebar_widgets(bookmarks: pd.DataFrame) -> None:
-    now = datetime.now()
+    now = datetime.now(ZoneInfo("America/Detroit"))
     st.sidebar.title("Desk Widgets")
 
     with st.sidebar.container():
         st.markdown('<div class="sidebar-widget">', unsafe_allow_html=True)
         st.metric("Clock", now.strftime("%I:%M %p").lstrip("0"))
-        st.caption(now.strftime("%A, %B %d"))
+        st.markdown(f'<div class="sidebar-date">{now.strftime("%A, %B %d")}</div>', unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
     with st.sidebar.expander("Weather", expanded=True):
