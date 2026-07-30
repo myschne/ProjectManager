@@ -655,12 +655,10 @@ def render_board(projects: pd.DataFrame, tasks: pd.DataFrame) -> None:
 
     if projects.empty:
         board_html.append(
-            """
-            <div class="sticky-note note-high empty-board-note" style="--tilt: -1deg;">
-                <h3>Add a project</h3>
-                <div class="sticky-body">Your post-it board will appear here once projects and tasks exist.</div>
-            </div>
-            """
+            '<div class="sticky-note note-high empty-board-note" style="--tilt: -1deg;">'
+            "<h3>Add a project</h3>"
+            '<div class="sticky-body">Your post-it board will appear here once projects and tasks exist.</div>'
+            "</div>"
         )
     else:
         board_html.append('<div class="sticky-grid">')
