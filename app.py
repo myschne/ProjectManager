@@ -43,6 +43,7 @@ def init_db() -> None:
                 status TEXT NOT NULL DEFAULT 'Not started',
                 progress INTEGER NOT NULL DEFAULT 0,
                 priority TEXT NOT NULL DEFAULT 'Medium',
+                sort_order INTEGER NOT NULL DEFAULT 0,
                 due_date TEXT,
                 notes TEXT DEFAULT '',
                 created_at TEXT NOT NULL
@@ -55,6 +56,7 @@ def init_db() -> None:
                 owner TEXT DEFAULT '',
                 status TEXT NOT NULL DEFAULT 'Not started',
                 priority TEXT NOT NULL DEFAULT 'Medium',
+                sort_order INTEGER NOT NULL DEFAULT 0,
                 due_date TEXT,
                 notes TEXT DEFAULT '',
                 created_at TEXT NOT NULL,
@@ -62,8 +64,8 @@ def init_db() -> None:
             );
             """
         )
-        columns = {row["name"] for row in conn.execute("PRAGMA table_info(projects)")}
-        if "progress" not in columns:
+        project_columns = {row["name"] for row in conn.execute("PRAGMA table_info(projects)")}
+        if "progress" not in project_columns:
             conn.execute("ALTER TABLE projects ADD COLUMN progress INTEGER NOT NULL DEFAULT 0")
             conn.execute(
                 """
@@ -75,6 +77,14 @@ def init_db() -> None:
                 END
                 """
             )
+        if "sort_order" not in project_columns:
+            conn.execute("ALTER TABLE projects ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0")
+            conn.execute("UPDATE projects SET sort_order = id * 10")
+
+        task_columns = {row["name"] for row in conn.execute("PRAGMA table_info(tasks)")}
+        if "sort_order" not in task_columns:
+            conn.execute("ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0")
+            conn.execute("UPDATE tasks SET sort_order = id * 10")
         conn.commit()
 
 
@@ -89,6 +99,22 @@ def execute(query: str, params: tuple = ()) -> None:
         conn.commit()
 
 
+def scalar(query: str, params: tuple = ()) -> object:
+    with closing(get_connection()) as conn:
+        row = conn.execute(query, params).fetchone()
+        return row[0] if row else None
+
+
+def next_project_sort_order() -> int:
+    value = scalar("SELECT COALESCE(MAX(sort_order), 0) + 10 FROM projects")
+    return int(value or 10)
+
+
+def next_task_sort_order(project_id: int) -> int:
+    value = scalar("SELECT COALESCE(MAX(sort_order), 0) + 10 FROM tasks WHERE project_id = ?", (project_id,))
+    return int(value or 10)
+
+
 def project_status_from_progress(progress: int) -> str:
     if progress >= 100:
         return "Done"
@@ -101,8 +127,8 @@ def add_project(name: str, owner: str, progress: int, priority: str, due_date: d
     status = project_status_from_progress(progress)
     execute(
         """
-        INSERT INTO projects (name, owner, status, progress, priority, due_date, notes, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO projects (name, owner, status, progress, priority, sort_order, due_date, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             name.strip(),
@@ -110,6 +136,7 @@ def add_project(name: str, owner: str, progress: int, priority: str, due_date: d
             status,
             progress,
             priority,
+            next_project_sort_order(),
             due_date.isoformat() if due_date else None,
             notes.strip(),
             datetime.now().isoformat(timespec="seconds"),
@@ -128,8 +155,8 @@ def add_task(
 ) -> None:
     execute(
         """
-        INSERT INTO tasks (project_id, title, owner, status, priority, due_date, notes, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO tasks (project_id, title, owner, status, priority, sort_order, due_date, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             project_id,
@@ -137,6 +164,7 @@ def add_task(
             owner.strip(),
             status,
             priority,
+            next_task_sort_order(project_id),
             due_date.isoformat() if due_date else None,
             notes.strip(),
             datetime.now().isoformat(timespec="seconds"),
@@ -174,6 +202,57 @@ def delete_project(project_id: int) -> None:
 
 def delete_task(task_id: int) -> None:
     execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+
+
+def move_project(project_id: int, direction: int) -> None:
+    comparator = "<" if direction < 0 else ">"
+    ordering = "DESC" if direction < 0 else "ASC"
+    with closing(get_connection()) as conn:
+        current = conn.execute("SELECT id, sort_order FROM projects WHERE id = ?", (project_id,)).fetchone()
+        if current is None:
+            return
+        neighbor = conn.execute(
+            f"""
+            SELECT id, sort_order
+            FROM projects
+            WHERE sort_order {comparator} ?
+            ORDER BY sort_order {ordering}, id {ordering}
+            LIMIT 1
+            """,
+            (current["sort_order"],),
+        ).fetchone()
+        if neighbor is None:
+            return
+        conn.execute("UPDATE projects SET sort_order = ? WHERE id = ?", (neighbor["sort_order"], current["id"]))
+        conn.execute("UPDATE projects SET sort_order = ? WHERE id = ?", (current["sort_order"], neighbor["id"]))
+        conn.commit()
+
+
+def move_task(task_id: int, direction: int) -> None:
+    comparator = "<" if direction < 0 else ">"
+    ordering = "DESC" if direction < 0 else "ASC"
+    with closing(get_connection()) as conn:
+        current = conn.execute(
+            "SELECT id, project_id, sort_order FROM tasks WHERE id = ?",
+            (task_id,),
+        ).fetchone()
+        if current is None:
+            return
+        neighbor = conn.execute(
+            f"""
+            SELECT id, sort_order
+            FROM tasks
+            WHERE project_id = ? AND status != 'Done' AND sort_order {comparator} ?
+            ORDER BY sort_order {ordering}, id {ordering}
+            LIMIT 1
+            """,
+            (current["project_id"], current["sort_order"]),
+        ).fetchone()
+        if neighbor is None:
+            return
+        conn.execute("UPDATE tasks SET sort_order = ? WHERE id = ?", (neighbor["sort_order"], current["id"]))
+        conn.execute("UPDATE tasks SET sort_order = ? WHERE id = ?", (current["sort_order"], neighbor["id"]))
+        conn.commit()
 
 
 def parse_date(value: object) -> date | None:
@@ -641,7 +720,46 @@ def render_dashboard(projects: pd.DataFrame, tasks: pd.DataFrame) -> None:
         st.bar_chart(pd.DataFrame({"status": counts.keys(), "tasks": counts.values()}).set_index("status"))
 
 
+def render_board_order_controls(projects: pd.DataFrame, tasks: pd.DataFrame) -> None:
+    if projects.empty:
+        return
+
+    with st.expander("Arrange post-its"):
+        st.markdown('<div class="section-title">Project order</div>', unsafe_allow_html=True)
+        ordered_projects = projects.sort_values(["sort_order", "id"])
+        for position, (_, project) in enumerate(ordered_projects.iterrows()):
+            label_col, left_col, right_col = st.columns([5, 1, 1])
+            label_col.write(f"{position + 1}. {project['name']}")
+            if left_col.button("<", key=f"project_left_{project['id']}", disabled=position == 0):
+                move_project(int(project["id"]), -1)
+                st.rerun()
+            if right_col.button(">", key=f"project_right_{project['id']}", disabled=position == len(ordered_projects) - 1):
+                move_project(int(project["id"]), 1)
+                st.rerun()
+
+        st.markdown('<div class="section-title">Task order</div>', unsafe_allow_html=True)
+        for _, project in ordered_projects.iterrows():
+            project_tasks = tasks[
+                (tasks["project_id"] == int(project["id"])) & (tasks["status"] != "Done")
+            ] if not tasks.empty else tasks
+            if project_tasks.empty:
+                continue
+            st.write(project["name"])
+            ordered_tasks = project_tasks.sort_values(["sort_order", "id"])
+            for position, (_, task) in enumerate(ordered_tasks.iterrows()):
+                label_col, up_col, down_col = st.columns([5, 1, 1])
+                label_col.write(f"{position + 1}. {task['title']}")
+                if up_col.button("Up", key=f"task_up_{task['id']}", disabled=position == 0):
+                    move_task(int(task["id"]), -1)
+                    st.rerun()
+                if down_col.button("Down", key=f"task_down_{task['id']}", disabled=position == len(ordered_tasks) - 1):
+                    move_task(int(task["id"]), 1)
+                    st.rerun()
+
+
 def render_board(projects: pd.DataFrame, tasks: pd.DataFrame) -> None:
+    render_board_order_controls(projects, tasks)
+
     project_count = len(projects)
     task_count = len(tasks[tasks["status"] != "Done"]) if not tasks.empty else 0
     board_html = [
@@ -663,7 +781,7 @@ def render_board(projects: pd.DataFrame, tasks: pd.DataFrame) -> None:
         )
     else:
         board_html.append('<div class="sticky-grid">')
-        for index, (_, project) in enumerate(projects.sort_values(["progress", "created_at"]).iterrows()):
+        for index, (_, project) in enumerate(projects.sort_values(["sort_order", "id"]).iterrows()):
             project_id = int(project["id"])
             project_tasks = tasks[tasks["project_id"] == project_id] if not tasks.empty else tasks
             open_tasks = project_tasks[project_tasks["status"] != "Done"] if not project_tasks.empty else project_tasks
@@ -702,7 +820,7 @@ def render_board(projects: pd.DataFrame, tasks: pd.DataFrame) -> None:
                     "</div>"
                 )
             else:
-                for task_index, (_, task) in enumerate(open_tasks.sort_values(["status", "priority", "due_date"], na_position="last").iterrows()):
+                for task_index, (_, task) in enumerate(open_tasks.sort_values(["sort_order", "id"]).iterrows()):
                     classes = ["sticky-note", "task-note", priority_class(task["priority"])]
                     if task["status"] == "Blocked":
                         classes.append("note-blocked")
@@ -813,7 +931,7 @@ def render_project_detail(projects: pd.DataFrame, tasks: pd.DataFrame) -> None:
         st.info("No tasks for this project yet.")
         return
 
-    for _, task in project_tasks.sort_values(["status", "due_date"], na_position="last").iterrows():
+    for _, task in project_tasks.sort_values(["sort_order", "id"]).iterrows():
         with st.expander(task["title"], expanded=task["status"] != "Done"):
             col1, col2, col3 = st.columns(3)
             task_status = col1.selectbox(
@@ -848,7 +966,7 @@ def render_project_detail(projects: pd.DataFrame, tasks: pd.DataFrame) -> None:
 def render_tables(projects: pd.DataFrame, tasks: pd.DataFrame) -> None:
     st.markdown('<div class="section-title">All Projects</div>', unsafe_allow_html=True)
     st.dataframe(
-        projects.drop(columns=["created_at"], errors="ignore"),
+        projects.drop(columns=["created_at", "sort_order"], errors="ignore"),
         hide_index=True,
         width="stretch",
         column_config={
@@ -880,8 +998,8 @@ def main() -> None:
 
     render_header()
 
-    projects = query_df("SELECT * FROM projects ORDER BY created_at DESC")
-    tasks = query_df("SELECT * FROM tasks ORDER BY created_at DESC")
+    projects = query_df("SELECT * FROM projects ORDER BY sort_order ASC, id ASC")
+    tasks = query_df("SELECT * FROM tasks ORDER BY sort_order ASC, id ASC")
 
     tabs = st.tabs(["Dashboard", "Board", "Add", "Projects", "Tables"])
     with tabs[0]:
