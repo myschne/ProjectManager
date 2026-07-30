@@ -361,9 +361,10 @@ def style_app() -> None:
         }
         .sticky-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(220px, 250px));
             gap: 1.35rem;
             align-items: start;
+            justify-content: start;
         }
         .sticky-column {
             min-width: 0;
@@ -675,34 +676,30 @@ def render_board(projects: pd.DataFrame, tasks: pd.DataFrame) -> None:
             due = format_short_date(project["due_date"])
             due_html = ""
             if due:
-                due_html = f"""
-                <div class="sticky-note due-note" style="--tilt: 3deg;">
-                    <h4>Due</h4>
-                    <div class="sticky-body">{escape_text(due)}</div>
-                </div>
-                """
+                due_html = (
+                    '<div class="sticky-note due-note" style="--tilt: 3deg;">'
+                    "<h4>Due</h4>"
+                    f'<div class="sticky-body">{escape_text(due)}</div>'
+                    "</div>"
+                )
 
             board_html.append(
-                f"""
-                <div class="sticky-column">
-                    <div class="{' '.join(project_classes)}" style="--tilt: {note_tilt(index)};">
-                        <h3>{escape_text(project['name'])}</h3>
-                        <div class="sticky-meta">{escape_text(project['owner'] or 'Unassigned')} - {escape_text(project['priority'])}</div>
-                        <div class="sticky-progress"><span style="width: {int(project['progress'])}%;"></span></div>
-                        <div class="sticky-meta">{int(project['progress'])}% complete</div>
-                    </div>
-                    {due_html}
-                """
+                '<div class="sticky-column">'
+                f'<div class="{" ".join(project_classes)}" style="--tilt: {note_tilt(index)};">'
+                f"<h3>{escape_text(project['name'])}</h3>"
+                f'<div class="sticky-meta">{escape_text(project["owner"] or "Unassigned")} - {escape_text(project["priority"])}</div>'
+                f'<div class="sticky-progress"><span style="width: {int(project["progress"])}%;"></span></div>'
+                f'<div class="sticky-meta">{int(project["progress"])}% complete</div>'
+                "</div>"
+                f"{due_html}"
             )
 
             if open_tasks.empty:
                 board_html.append(
-                    """
-                    <div class="sticky-note note-low task-note" style="--tilt: 1deg;">
-                        <h4>Clear</h4>
-                        <div class="sticky-body">No open tasks</div>
-                    </div>
-                    """
+                    '<div class="sticky-note note-low task-note" style="--tilt: 1deg;">'
+                    "<h4>Clear</h4>"
+                    '<div class="sticky-body">No open tasks</div>'
+                    "</div>"
                 )
             else:
                 for task_index, (_, task) in enumerate(open_tasks.sort_values(["status", "priority", "due_date"], na_position="last").iterrows()):
@@ -717,13 +714,11 @@ def render_board(projects: pd.DataFrame, tasks: pd.DataFrame) -> None:
                         task_meta = f"{task_meta} - due {task_due}"
                     note_text = task["notes"] or task["title"]
                     board_html.append(
-                        f"""
-                        <div class="{' '.join(classes)}" style="--tilt: {note_tilt(project_id + task_index)};">
-                            <h4>{escape_text(task['title'])}</h4>
-                            <div class="sticky-meta">{escape_text(task_meta)}</div>
-                            <div class="sticky-body">{escape_text(note_text)}</div>
-                        </div>
-                        """
+                        f'<div class="{" ".join(classes)}" style="--tilt: {note_tilt(project_id + task_index)};">'
+                        f"<h4>{escape_text(task['title'])}</h4>"
+                        f'<div class="sticky-meta">{escape_text(task_meta)}</div>'
+                        f'<div class="sticky-body">{escape_text(note_text)}</div>'
+                        "</div>"
                     )
             board_html.append("</div>")
         board_html.append("</div>")
