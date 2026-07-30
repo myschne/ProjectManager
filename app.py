@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import sqlite3
 from contextlib import closing
 from datetime import date, datetime
@@ -11,6 +12,7 @@ import streamlit as st
 
 APP_DIR = Path(__file__).parent
 DB_PATH = APP_DIR / "project_manager.db"
+HERO_IMAGE_PATH = APP_DIR / "assets" / "project-hero.png"
 
 STATUS_OPTIONS = ["Not started", "In progress", "Blocked", "Done"]
 PRIORITY_OPTIONS = ["Low", "Medium", "High", "Critical"]
@@ -179,6 +181,14 @@ def days_until(value: object) -> int | None:
     return (parsed - date.today()).days
 
 
+@st.cache_data(show_spinner=False)
+def image_data_url(path: str) -> str:
+    image_path = Path(path)
+    mime_type = "image/png" if image_path.suffix.lower() == ".png" else "image/jpeg"
+    encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
+
+
 def style_app() -> None:
     st.set_page_config(page_title="Project Manager", page_icon="PM", layout="wide")
     st.markdown(
@@ -191,16 +201,95 @@ def style_app() -> None:
             --pm-blue: #45aaf2;
             --pm-ink: #243042;
         }
+        .stApp {
+            background:
+                radial-gradient(circle at 8% 14%, rgba(255, 107, 107, 0.20), transparent 18rem),
+                radial-gradient(circle at 92% 12%, rgba(78, 205, 196, 0.22), transparent 20rem),
+                radial-gradient(circle at 88% 78%, rgba(246, 200, 95, 0.13), transparent 18rem);
+        }
+        .stApp::before,
+        .stApp::after {
+            content: "";
+            position: fixed;
+            top: 7rem;
+            bottom: 2rem;
+            width: 9rem;
+            pointer-events: none;
+            opacity: 0.55;
+            z-index: 0;
+        }
+        .stApp::before {
+            left: 0;
+            background:
+                linear-gradient(135deg, rgba(255, 107, 107, 0.34), transparent 55%),
+                repeating-linear-gradient(160deg, transparent 0 18px, rgba(69, 170, 242, 0.20) 18px 21px);
+            clip-path: polygon(0 0, 72% 10%, 38% 52%, 92% 100%, 0 100%);
+        }
+        .stApp::after {
+            right: 0;
+            background:
+                linear-gradient(225deg, rgba(78, 205, 196, 0.32), transparent 55%),
+                repeating-linear-gradient(25deg, transparent 0 20px, rgba(246, 200, 95, 0.22) 20px 23px);
+            clip-path: polygon(100% 0, 28% 8%, 62% 48%, 12% 100%, 100% 100%);
+        }
         .block-container {
             padding-top: 1.4rem;
             padding-bottom: 2rem;
             max-width: 1180px;
+            position: relative;
+            z-index: 1;
         }
-        h1 {
-            background: linear-gradient(90deg, var(--pm-coral), var(--pm-gold), var(--pm-mint), var(--pm-blue));
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
+        .pm-hero {
+            min-height: 210px;
+            border: 1px solid rgba(78, 205, 196, 0.28);
+            border-radius: 8px;
+            overflow: hidden;
+            margin: 0 0 1rem;
+            background:
+                linear-gradient(90deg, rgba(8, 12, 22, 0.94), rgba(8, 12, 22, 0.76) 44%, rgba(8, 12, 22, 0.22)),
+                var(--pm-hero-image);
+            background-size: cover;
+            background-position: center right;
+            box-shadow: 0 18px 50px rgba(0, 0, 0, 0.24);
+        }
+        .pm-hero-inner {
+            width: min(62%, 650px);
+            padding: 2.1rem 2.2rem;
+        }
+        .pm-hero-kicker {
+            color: var(--pm-mint);
+            font-size: 0.78rem;
+            font-weight: 800;
+            letter-spacing: 0;
+            text-transform: uppercase;
+            margin-bottom: 0.25rem;
+        }
+        .pm-hero h1 {
+            color: #ffffff;
+            font-size: 2.85rem;
+            line-height: 1.02;
+            margin: 0;
+        }
+        .pm-hero p {
+            color: rgba(255, 255, 255, 0.76);
+            font-size: 1rem;
+            margin: 0.8rem 0 0;
+            max-width: 36rem;
+        }
+        .pm-hero-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 1.15rem;
+        }
+        .pm-hero-chip {
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            border-radius: 999px;
+            color: #ffffff;
+            font-size: 0.78rem;
+            font-weight: 700;
+            padding: 0.28rem 0.65rem;
+            background: rgba(255, 255, 255, 0.10);
         }
         div[data-testid="stTabs"] button[aria-selected="true"] {
             color: var(--pm-coral);
@@ -237,7 +326,50 @@ def style_app() -> None:
             color: #677083;
             font-size: 0.92rem;
         }
+        @media (max-width: 760px) {
+            .stApp::before,
+            .stApp::after {
+                display: none;
+            }
+            .pm-hero {
+                min-height: 250px;
+                background:
+                    linear-gradient(180deg, rgba(8, 12, 22, 0.94), rgba(8, 12, 22, 0.68)),
+                    var(--pm-hero-image);
+                background-position: center;
+            }
+            .pm-hero-inner {
+                width: auto;
+                padding: 1.5rem;
+            }
+            .pm-hero h1 {
+                font-size: 2.15rem;
+            }
+        }
         </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_header() -> None:
+    hero_style = ""
+    if HERO_IMAGE_PATH.exists():
+        hero_style = f' style="--pm-hero-image: url({image_data_url(str(HERO_IMAGE_PATH))});"'
+    st.markdown(
+        f"""
+        <div class="pm-hero"{hero_style}>
+            <div class="pm-hero-inner">
+                <div class="pm-hero-kicker">Projects, but prettier</div>
+                <h1>Project Manager</h1>
+                <p>Track owners, deadlines, priorities, blockers, and percent-complete progress in one colorful command center.</p>
+                <div class="pm-hero-chips">
+                    <span class="pm-hero-chip">Progress bars</span>
+                    <span class="pm-hero-chip">Deadline radar</span>
+                    <span class="pm-hero-chip">Task mix</span>
+                </div>
+            </div>
+        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -467,8 +599,7 @@ def main() -> None:
     style_app()
     init_db()
 
-    st.title("Project Manager")
-    st.caption("Track projects, tasks, owners, priorities, blockers, and upcoming deadlines.")
+    render_header()
 
     projects = query_df("SELECT * FROM projects ORDER BY created_at DESC")
     tasks = query_df("SELECT * FROM tasks ORDER BY created_at DESC")
