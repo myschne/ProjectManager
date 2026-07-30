@@ -641,7 +641,6 @@ def render_header() -> None:
         f"""
         <div class="pm-hero"{hero_style}>
             <div class="pm-hero-inner">
-                <div class="pm-hero-kicker">Projects, but prettier</div>
                 <h1>Project Manager</h1>
                 <p>Track owners, deadlines, priorities, blockers, and percent-complete progress in one colorful command center.</p>
                 <div class="pm-hero-chips">
