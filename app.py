@@ -410,16 +410,31 @@ def style_app() -> None:
             color: inherit;
         }
         .sticky-board {
+            position: relative;
             min-height: 560px;
             padding: 1.5rem;
             border-radius: 8px;
             border: 1px solid rgba(255, 255, 255, 0.14);
             background:
+                radial-gradient(circle at 22px 22px, rgba(69, 170, 242, 0.10) 0 2px, transparent 2px 100%),
+                linear-gradient(90deg, rgba(255, 107, 107, 0.08), transparent 16%, transparent 84%, rgba(78, 205, 196, 0.08)),
                 linear-gradient(115deg, rgba(255, 255, 255, 0.96), rgba(244, 249, 246, 0.94)),
                 repeating-linear-gradient(0deg, transparent 0 35px, rgba(69, 170, 242, 0.06) 35px 36px);
+            background-size: 44px 44px, auto, auto, auto;
             box-shadow: inset 0 0 38px rgba(16, 24, 40, 0.10), 0 20px 50px rgba(0, 0, 0, 0.20);
             color: #1f2937;
             overflow-x: auto;
+        }
+        .sticky-board::before {
+            content: "";
+            position: absolute;
+            left: 1.5rem;
+            right: 1.5rem;
+            top: 5.1rem;
+            height: 7px;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #ff6b6b, #f6c85f, #4ecdc4, #45aaf2);
+            opacity: 0.36;
         }
         .sticky-board-title {
             display: flex;
@@ -440,13 +455,28 @@ def style_app() -> None:
         }
         .sticky-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 250px));
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
             gap: 1.35rem;
             align-items: start;
             justify-content: start;
         }
         .sticky-column {
             min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .sticky-board.has-one-project .sticky-grid {
+            display: block;
+        }
+        .sticky-board.has-one-project .sticky-column {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 250px));
+            gap: 1rem;
+            align-items: start;
+        }
+        .sticky-board.has-one-project .project-note {
+            grid-column: span 1;
         }
         .sticky-note {
             position: relative;
@@ -458,7 +488,6 @@ def style_app() -> None:
             background-image:
                 repeating-linear-gradient(0deg, transparent 0 22px, rgba(31, 41, 55, 0.13) 22px 23px),
                 linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0));
-            margin-bottom: 0.9rem;
         }
         .sticky-note::after {
             content: "";
@@ -762,14 +791,13 @@ def render_board(projects: pd.DataFrame, tasks: pd.DataFrame) -> None:
 
     project_count = len(projects)
     task_count = len(tasks[tasks["status"] != "Done"]) if not tasks.empty else 0
+    board_classes = "sticky-board has-one-project" if project_count == 1 else "sticky-board"
     board_html = [
-        """
-        <div class="sticky-board">
-            <div class="sticky-board-title">
-                <h2>Desk Board</h2>
-                <span>Color coded by priority</span>
-            </div>
-        """
+        f'<div class="{board_classes}">'
+        '<div class="sticky-board-title">'
+        "<h2>Desk Board</h2>"
+        "<span>Color coded by priority</span>"
+        "</div>"
     ]
 
     if projects.empty:
