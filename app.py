@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import base64
+import calendar
 import html
+import json
 import sqlite3
 from contextlib import closing
 from datetime import date, datetime
 from pathlib import Path
+from urllib.parse import quote
+from urllib.request import urlopen
 
 import pandas as pd
 import streamlit as st
@@ -24,6 +28,16 @@ PRIORITY_CLASSES = {
     "High": "note-high",
     "Critical": "note-critical",
 }
+
+DAILY_QUOTES = [
+    "Make it visible. Then make it smaller.",
+    "A clear next step beats a perfect plan.",
+    "Momentum is a design choice.",
+    "The board knows what the brain forgot.",
+    "One useful move is enough to restart the engine.",
+    "Progress loves a short list.",
+    "Name the work, then move the note.",
+]
 
 
 def get_connection() -> sqlite3.Connection:
@@ -61,6 +75,13 @@ def init_db() -> None:
                 notes TEXT DEFAULT '',
                 created_at TEXT NOT NULL,
                 FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS bookmarks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                label TEXT NOT NULL,
+                url TEXT NOT NULL,
+                created_at TEXT NOT NULL
             );
             """
         )
@@ -202,6 +223,20 @@ def delete_project(project_id: int) -> None:
 
 def delete_task(task_id: int) -> None:
     execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+
+
+def add_bookmark(label: str, url: str) -> None:
+    execute(
+        """
+        INSERT INTO bookmarks (label, url, created_at)
+        VALUES (?, ?, ?)
+        """,
+        (label.strip(), url.strip(), datetime.now().isoformat(timespec="seconds")),
+    )
+
+
+def delete_bookmark(bookmark_id: int) -> None:
+    execute("DELETE FROM bookmarks WHERE id = ?", (bookmark_id,))
 
 
 def move_project(project_id: int, direction: int) -> None:
@@ -395,6 +430,44 @@ def style_app() -> None:
                 linear-gradient(135deg, rgba(27, 214, 180, 0.18), rgba(33, 96, 174, 0.16)),
                 rgba(4, 17, 28, 0.42);
             backdrop-filter: blur(8px);
+        }
+        section[data-testid="stSidebar"] {
+            background:
+                linear-gradient(180deg, rgba(4, 17, 28, 0.96), rgba(6, 45, 59, 0.94)),
+                radial-gradient(circle at 20% 10%, rgba(27, 214, 180, 0.22), transparent 14rem);
+            border-right: 1px solid rgba(78, 205, 196, 0.24);
+        }
+        section[data-testid="stSidebar"] div[data-testid="stMetric"] {
+            background:
+                linear-gradient(135deg, rgba(27, 214, 180, 0.20), rgba(69, 170, 242, 0.16)),
+                rgba(255, 255, 255, 0.06);
+        }
+        section[data-testid="stSidebar"] [data-testid="stExpander"] {
+            border-color: rgba(78, 205, 196, 0.22);
+            background: rgba(255, 255, 255, 0.04);
+        }
+        .mini-calendar {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+            font-size: 0.78rem;
+        }
+        .mini-calendar th {
+            color: var(--pm-mint);
+            font-weight: 800;
+            padding: 0.25rem 0;
+            text-align: center;
+        }
+        .mini-calendar td {
+            color: rgba(255, 255, 255, 0.82);
+            height: 1.65rem;
+            text-align: center;
+            border-radius: 6px;
+        }
+        .mini-calendar td.today {
+            background: linear-gradient(135deg, var(--pm-mint), var(--pm-blue));
+            color: #04111c;
+            font-weight: 900;
         }
         .section-title {
             color: var(--pm-mint);
@@ -686,6 +759,115 @@ def note_tilt(seed: int) -> str:
 
 def priority_class(priority: object) -> str:
     return PRIORITY_CLASSES.get(str(priority), "note-medium")
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def fetch_weather(location: str) -> dict[str, str] | None:
+    cleaned = location.strip()
+    if not cleaned:
+        return None
+    url = f"https://wttr.in/{quote(cleaned)}?format=j1"
+    try:
+        with urlopen(url, timeout=4) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return None
+
+    current = payload.get("current_condition", [{}])[0]
+    area = payload.get("nearest_area", [{}])[0]
+    weather_desc = current.get("weatherDesc", [{}])[0].get("value", "Weather unavailable")
+    area_name = area.get("areaName", [{}])[0].get("value", cleaned)
+    region = area.get("region", [{}])[0].get("value", "")
+    location_name = f"{area_name}, {region}" if region else area_name
+    return {
+        "location": location_name,
+        "condition": weather_desc,
+        "temp": f"{current.get('temp_F', '--')} F",
+        "feels_like": f"{current.get('FeelsLikeF', '--')} F",
+        "humidity": f"{current.get('humidity', '--')}%",
+    }
+
+
+def daily_quote() -> str:
+    index = date.today().toordinal() % len(DAILY_QUOTES)
+    return DAILY_QUOTES[index]
+
+
+def render_mini_calendar() -> None:
+    today = date.today()
+    weeks = calendar.Calendar(firstweekday=6).monthdayscalendar(today.year, today.month)
+    st.markdown(f"**{today.strftime('%B %Y')}**")
+    calendar_html = ['<table class="mini-calendar">']
+    calendar_html.append("<thead><tr><th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th></tr></thead>")
+    calendar_html.append("<tbody>")
+    for week in weeks:
+        calendar_html.append("<tr>")
+        for day in week:
+            if day == 0:
+                calendar_html.append("<td></td>")
+            elif day == today.day:
+                calendar_html.append(f'<td class="today">{day}</td>')
+            else:
+                calendar_html.append(f"<td>{day}</td>")
+        calendar_html.append("</tr>")
+    calendar_html.append("</tbody></table>")
+    st.markdown("".join(calendar_html), unsafe_allow_html=True)
+
+
+def render_bookmarks(bookmarks: pd.DataFrame) -> None:
+    if bookmarks.empty:
+        st.caption("No bookmarks yet.")
+    else:
+        for _, bookmark in bookmarks.iterrows():
+            cols = st.columns([5, 1])
+            cols[0].markdown(f"[{bookmark['label']}]({bookmark['url']})")
+            if cols[1].button("x", key=f"delete_bookmark_{bookmark['id']}"):
+                delete_bookmark(int(bookmark["id"]))
+                st.rerun()
+
+    with st.form("add_bookmark", clear_on_submit=True):
+        label = st.text_input("Label", placeholder="GitHub")
+        url = st.text_input("URL", placeholder="https://github.com")
+        submitted = st.form_submit_button("Add bookmark")
+        if submitted:
+            if not label.strip() or not url.strip():
+                st.warning("Bookmark label and URL are required.")
+            else:
+                normalized_url = url.strip()
+                if not normalized_url.startswith(("http://", "https://")):
+                    normalized_url = f"https://{normalized_url}"
+                add_bookmark(label, normalized_url)
+                st.rerun()
+
+
+def render_sidebar_widgets(bookmarks: pd.DataFrame) -> None:
+    now = datetime.now()
+    st.sidebar.title("Desk Widgets")
+
+    with st.sidebar.container():
+        st.markdown('<div class="sidebar-widget">', unsafe_allow_html=True)
+        st.metric("Clock", now.strftime("%I:%M %p").lstrip("0"))
+        st.caption(now.strftime("%A, %B %d"))
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with st.sidebar.expander("Weather", expanded=True):
+        location = st.text_input("Location", value=st.session_state.get("weather_location", "New York, NY"))
+        st.session_state["weather_location"] = location
+        weather = fetch_weather(location)
+        if weather is None:
+            st.caption("Weather is unavailable right now.")
+        else:
+            st.metric(weather["location"], weather["temp"], f"Feels like {weather['feels_like']}")
+            st.caption(f"{weather['condition']} - humidity {weather['humidity']}")
+
+    with st.sidebar.expander("Daily Quote", expanded=True):
+        st.write(daily_quote())
+
+    with st.sidebar.expander("Mini Calendar", expanded=True):
+        render_mini_calendar()
+
+    with st.sidebar.expander("Bookmarks", expanded=True):
+        render_bookmarks(bookmarks)
 
 
 def upcoming_items(projects: pd.DataFrame, tasks: pd.DataFrame) -> pd.DataFrame:
@@ -1030,6 +1212,9 @@ def main() -> None:
 
     projects = query_df("SELECT * FROM projects ORDER BY sort_order ASC, id ASC")
     tasks = query_df("SELECT * FROM tasks ORDER BY sort_order ASC, id ASC")
+    bookmarks = query_df("SELECT * FROM bookmarks ORDER BY created_at DESC")
+
+    render_sidebar_widgets(bookmarks)
 
     tabs = st.tabs(["Dashboard", "Board", "Add", "Projects", "Tables"])
     with tabs[0]:
