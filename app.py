@@ -878,7 +878,7 @@ def render_bookmarks(bookmarks: pd.DataFrame) -> None:
                 ),
                 unsafe_allow_html=True,
             )
-            if cols[1].button("Delete", key=f"delete_bookmark_{bookmark['id']}"):
+            if cols[1].button("x", key=f"delete_bookmark_{bookmark['id']}"):
                 delete_bookmark(int(bookmark["id"]))
                 st.rerun()
 
