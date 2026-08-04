@@ -242,6 +242,93 @@ def delete_bookmark(bookmark_id: int) -> None:
     execute("DELETE FROM bookmarks WHERE id = ?", (bookmark_id,))
 
 
+def records_for_backup(query: str) -> list[dict]:
+    records = query_df(query).to_dict(orient="records")
+    clean_records = []
+    for record in records:
+        clean_records.append({key: (None if pd.isna(value) else value) for key, value in record.items()})
+    return clean_records
+
+
+def export_backup() -> str:
+    payload = {
+        "version": 1,
+        "exported_at": datetime.now(ZoneInfo("America/Detroit")).isoformat(timespec="seconds"),
+        "projects": records_for_backup("SELECT * FROM projects ORDER BY sort_order ASC, id ASC"),
+        "tasks": records_for_backup("SELECT * FROM tasks ORDER BY sort_order ASC, id ASC"),
+        "bookmarks": records_for_backup("SELECT * FROM bookmarks ORDER BY created_at DESC"),
+    }
+    return json.dumps(payload, indent=2)
+
+
+def restore_backup(backup_text: str) -> tuple[bool, str]:
+    try:
+        payload = json.loads(backup_text)
+    except json.JSONDecodeError:
+        return False, "That file is not valid JSON."
+
+    required_tables = ["projects", "tasks", "bookmarks"]
+    if not all(isinstance(payload.get(table), list) for table in required_tables):
+        return False, "That backup does not look like a Project Manager backup."
+
+    project_fields = ["id", "name", "owner", "status", "progress", "priority", "sort_order", "due_date", "notes", "created_at"]
+    task_fields = ["id", "project_id", "title", "owner", "status", "priority", "sort_order", "due_date", "notes", "created_at"]
+    bookmark_fields = ["id", "label", "url", "created_at"]
+
+    with closing(get_connection()) as conn:
+        try:
+            conn.execute("DELETE FROM tasks")
+            conn.execute("DELETE FROM projects")
+            conn.execute("DELETE FROM bookmarks")
+
+            for project in payload["projects"]:
+                values = {field: project.get(field) for field in project_fields}
+                values["status"] = values["status"] or project_status_from_progress(int(values["progress"] or 0))
+                values["progress"] = int(values["progress"] or 0)
+                values["priority"] = values["priority"] or "Medium"
+                values["sort_order"] = int(values["sort_order"] or int(values["id"] or 0) * 10)
+                values["created_at"] = values["created_at"] or datetime.now().isoformat(timespec="seconds")
+                conn.execute(
+                    """
+                    INSERT INTO projects (id, name, owner, status, progress, priority, sort_order, due_date, notes, created_at)
+                    VALUES (:id, :name, :owner, :status, :progress, :priority, :sort_order, :due_date, :notes, :created_at)
+                    """,
+                    values,
+                )
+
+            for task in payload["tasks"]:
+                values = {field: task.get(field) for field in task_fields}
+                values["status"] = values["status"] or "Not started"
+                values["priority"] = values["priority"] or "Medium"
+                values["sort_order"] = int(values["sort_order"] or int(values["id"] or 0) * 10)
+                values["created_at"] = values["created_at"] or datetime.now().isoformat(timespec="seconds")
+                conn.execute(
+                    """
+                    INSERT INTO tasks (id, project_id, title, owner, status, priority, sort_order, due_date, notes, created_at)
+                    VALUES (:id, :project_id, :title, :owner, :status, :priority, :sort_order, :due_date, :notes, :created_at)
+                    """,
+                    values,
+                )
+
+            for bookmark in payload["bookmarks"]:
+                values = {field: bookmark.get(field) for field in bookmark_fields}
+                values["created_at"] = values["created_at"] or datetime.now().isoformat(timespec="seconds")
+                conn.execute(
+                    """
+                    INSERT INTO bookmarks (id, label, url, created_at)
+                    VALUES (:id, :label, :url, :created_at)
+                    """,
+                    values,
+                )
+
+            conn.commit()
+        except (KeyError, TypeError, ValueError, sqlite3.DatabaseError) as error:
+            conn.rollback()
+            return False, f"Restore failed: {error}"
+
+    return True, "Backup restored."
+
+
 def move_project(project_id: int, direction: int) -> None:
     comparator = "<" if direction < 0 else ">"
     ordering = "DESC" if direction < 0 else "ASC"
@@ -953,6 +1040,29 @@ def render_bookmarks(bookmarks: pd.DataFrame) -> None:
                 st.rerun()
 
 
+def render_data_backup_widget() -> None:
+    backup_text = export_backup()
+    today = datetime.now(ZoneInfo("America/Detroit")).strftime("%Y-%m-%d")
+    st.download_button(
+        "Download backup",
+        data=backup_text,
+        file_name=f"project-manager-backup-{today}.json",
+        mime="application/json",
+    )
+    st.caption("Use this before a hosted app sleeps, restarts, or redeploys.")
+
+    uploaded_backup = st.file_uploader("Restore backup", type=["json"])
+    if uploaded_backup is not None:
+        st.warning("Restoring replaces the current app data.")
+        if st.button("Restore this backup"):
+            ok, message = restore_backup(uploaded_backup.getvalue().decode("utf-8"))
+            if ok:
+                st.success(message)
+                st.rerun()
+            else:
+                st.error(message)
+
+
 def render_sidebar_widgets(bookmarks: pd.DataFrame) -> None:
     now = datetime.now(ZoneInfo("America/Detroit"))
     st.sidebar.title("Desk Widgets")
@@ -993,6 +1103,9 @@ def render_sidebar_widgets(bookmarks: pd.DataFrame) -> None:
 
     with st.sidebar.expander("Bookmarks", expanded=True):
         render_bookmarks(bookmarks)
+
+    with st.sidebar.expander("Data Backup", expanded=False):
+        render_data_backup_widget()
 
 
 def upcoming_items(projects: pd.DataFrame, tasks: pd.DataFrame) -> pd.DataFrame:
